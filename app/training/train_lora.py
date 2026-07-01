@@ -7,7 +7,7 @@ from trl import SFTTrainer, SFTConfig
 
 from app.training.config import load_training_config, merge_config_with_overrides
 from app.training.dataset_loader import load_and_prepare_dataset
-from app.core.platform_config import get_wandb_project
+from app.core.platform_config import get_wandb_project, get_wandb_entity
 from app.core.secrets import apply_secrets_to_environment, get_hf_token, get_wandb_api_key
 
 
@@ -26,6 +26,7 @@ def run_training_from_config(config: dict) -> dict:
     if not use_wandb:
         os.environ["WANDB_MODE"] = "disabled"
     wandb_project = config.get("wandb_project", get_wandb_project())
+    wandb_entity = config.get("wandb_entity") or get_wandb_entity() or None
 
     output_dir = output_config.get("output_dir", f"outputs/{experiment_name}")
     max_seq_length = int(model_config.get("max_seq_length", 1024))
@@ -33,6 +34,7 @@ def run_training_from_config(config: dict) -> dict:
     run = None
     try:
         run = wandb.init(
+            entity=wandb_entity,
             project=wandb_project,
             name=experiment_name,
             config=config,
@@ -132,6 +134,8 @@ def run_training_from_config(config: dict) -> dict:
             "prompt_template": config.get("prompt_template"),
             "output_dir": output_dir,
             "adapter_repo": adapter_repo,
+            "wandb_entity": wandb_entity,
+            "wandb_project": wandb_project,
             "wandb_run_id": run.id if run else None,
             "wandb_run_name": run.name if run else None,
             "wandb_run_url": run.url if run else None,

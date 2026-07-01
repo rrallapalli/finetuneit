@@ -258,6 +258,16 @@ with tab_train:
             help=HELP["use_rslora"],
         )
 
+    st.subheader("Experiment Tracking")
+    config["wandb_entity"] = st.text_input(
+        "W&B Entity", config.get("wandb_entity", wandb_cfg.get("entity", "")),
+        help="Weights & Biases team or username the run logs under. Leave blank to use your default entity.",
+    )
+    config["wandb_project"] = st.text_input(
+        "W&B Project", config.get("wandb_project", wandb_cfg.get("project", "finetuneit-lite")),
+        help="Weights & Biases project the run logs to.",
+    )
+
     st.subheader("Output")
     config["output"]["output_dir"] = st.text_input(
         "Output Directory", config["output"].get("output_dir", "outputs/adapter"),
@@ -287,9 +297,9 @@ with tab_live:
     last_result = st.session_state.get("last_train_result", {})
     col_a, col_b, col_c = st.columns(3)
     with col_a:
-        wandb_entity = st.text_input("W&B Entity", wandb_cfg.get("entity", ""), key="live_entity")
+        wandb_entity = st.text_input("W&B Entity", last_result.get("wandb_entity") or wandb_cfg.get("entity", ""), key="live_entity")
     with col_b:
-        wandb_project = st.text_input("W&B Project", wandb_cfg.get("project", "finetuneit-lite"), key="live_project")
+        wandb_project = st.text_input("W&B Project", last_result.get("wandb_project") or wandb_cfg.get("project", "finetuneit-lite"), key="live_project")
     with col_c:
         wandb_run_id = st.text_input("W&B Run ID", last_result.get("wandb_run_id", ""), key="live_run_id")
 
