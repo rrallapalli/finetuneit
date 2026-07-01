@@ -53,3 +53,7 @@ training:
 output:
   output_dir: outputs/custom_jsonl
   output_adapter_repo: your-hf-username/custom-jsonl-lora
+  # Opt-in exports (default off). Pushed to <adapter_repo>-merged / -gguf.
+  export_merged: false        # merged 16-bit standalone model (no PEFT needed)
+  export_gguf: false          # GGUF for llama.cpp / Ollama / LM Studio
+  gguf_quantization: q4_k_m

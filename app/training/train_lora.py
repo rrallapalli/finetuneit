@@ -11,6 +11,42 @@ from app.core.platform_config import get_wandb_project, get_wandb_entity
 from app.core.secrets import apply_secrets_to_environment, get_hf_token, get_wandb_api_key
 
 
+def _export_artifacts(model, tokenizer, output_config, adapter_repo, output_dir):
+    """Opt-in merged-16bit / GGUF export. Best-effort: each is isolated so it can
+    never fail the training run. Uses Unsloth's helpers (version-pinned in
+    setup_pod_env.sh). Only pushes to the Hub when a real adapter_repo is set."""
+    info = {}
+    hf_token = get_hf_token()
+    hub_ok = bool(adapter_repo) and not adapter_repo.startswith("your-hf-username")
+
+    if output_config.get("export_merged"):
+        try:
+            merged_dir = os.path.join(output_dir, "merged_16bit")
+            model.save_pretrained_merged(merged_dir, tokenizer, save_method="merged_16bit")
+            info["merged_dir"] = merged_dir
+            if hub_ok:
+                merged_repo = output_config.get("merged_repo") or f"{adapter_repo}-merged"
+                model.push_to_hub_merged(merged_repo, tokenizer, save_method="merged_16bit", token=hf_token)
+                info["merged_repo"] = merged_repo
+        except Exception as exc:
+            info["merged_error"] = f"{type(exc).__name__}: {exc}"
+
+    if output_config.get("export_gguf"):
+        try:
+            quant = output_config.get("gguf_quantization", "q4_k_m")
+            gguf_dir = os.path.join(output_dir, "gguf")
+            model.save_pretrained_gguf(gguf_dir, tokenizer, quantization_method=quant)
+            info["gguf_dir"] = gguf_dir
+            if hub_ok:
+                gguf_repo = output_config.get("gguf_repo") or f"{adapter_repo}-gguf"
+                model.push_to_hub_gguf(gguf_repo, tokenizer, quantization_method=quant, token=hf_token)
+                info["gguf_repo"] = gguf_repo
+        except Exception as exc:
+            info["gguf_error"] = f"{type(exc).__name__}: {exc}"
+
+    return info
+
+
 def run_training_from_config(config: dict) -> dict:
     apply_secrets_to_environment()
     experiment_name = config.get("experiment_name", "finetuneit-experiment")
@@ -126,6 +162,9 @@ def run_training_from_config(config: dict) -> dict:
             api.create_repo(adapter_repo, exist_ok=True)
             api.upload_folder(repo_id=adapter_repo, folder_path=output_dir, repo_type="model")
 
+        # Opt-in merged / GGUF exports (config-gated, best-effort).
+        exports = _export_artifacts(best_model, tokenizer, output_config, adapter_repo, output_dir)
+
         result = {
             "status": "completed",
             "experiment_name": experiment_name,
@@ -134,6 +173,7 @@ def run_training_from_config(config: dict) -> dict:
             "prompt_template": config.get("prompt_template"),
             "output_dir": output_dir,
             "adapter_repo": adapter_repo,
+            "exports": exports,
             "wandb_entity": wandb_entity,
             "wandb_project": wandb_project,
             "wandb_run_id": run.id if run else None,

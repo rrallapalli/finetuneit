@@ -65,9 +65,11 @@ def load_yaml(path):
         return yaml.safe_load(f)
 
 
-def safe_post(url, payload):
+def safe_post(url, payload, timeout=(10, 7200)):
+    # (connect, read). Local-mode POST /jobs/train runs the whole job
+    # synchronously, so the read timeout must be long; connect stays short.
     try:
-        response = requests.post(url, json=payload, timeout=60)
+        response = requests.post(url, json=payload, timeout=timeout)
         response.raise_for_status()
         return response.json()
     except Exception as e:
@@ -277,6 +279,22 @@ with tab_train:
         "Hugging Face Adapter Repo", config["output"].get("output_adapter_repo", "your-hf-username/adapter"),
         help=HELP["adapter_repo"],
     )
+
+    e1, e2, e3 = st.columns(3)
+    with e1:
+        config["output"]["export_merged"] = st.checkbox(
+            "Export merged 16-bit", value=bool(config["output"].get("export_merged", False)),
+            help="Also push a merged standalone model (adapter fused into the base; no PEFT needed) to <repo>-merged.",
+        )
+    with e2:
+        config["output"]["export_gguf"] = st.checkbox(
+            "Export GGUF", value=bool(config["output"].get("export_gguf", False)),
+            help="Also push a GGUF build (llama.cpp / Ollama / LM Studio) to <repo>-gguf. Heavier; needs an -Instruct base for chat use.",
+        )
+    with e3:
+        config["output"]["gguf_quantization"] = st.text_input(
+            "GGUF quantization", config["output"].get("gguf_quantization", "q4_k_m"),
+        )
 
     with st.expander("Preview full training config"):
         st.code(yaml.safe_dump(config, sort_keys=False), language="yaml")
