@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Environment / secrets
+.env
+configs/secrets/secrets.yaml
+
+# Outputs
+outputs/
+registry/*.json
+registry/*.csv
+
+# OS
+.DS_Store

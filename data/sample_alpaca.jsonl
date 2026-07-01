@@ -1,0 +1,3 @@
+{"instruction":"Explain what credit risk means.","input":"","output":"Credit risk is the possibility that a borrower may fail to repay a loan or meet contractual obligations."}
+{"instruction":"Summarize the role of loan-to-income ratio in lending.","input":"","output":"Loan-to-income ratio compares a borrower's loan amount or repayment obligation with income and helps lenders assess affordability."}
+{"instruction":"Explain model evaluation in simple terms.","input":"","output":"Model evaluation measures how well a model performs on unseen examples using metrics such as accuracy, loss, latency, and quality scores."}

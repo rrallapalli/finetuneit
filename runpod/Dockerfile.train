@@ -1,0 +1,11 @@
+FROM pytorch/pytorch:2.2.0-cuda12.1-cudnn8-runtime
+
+WORKDIR /workspace
+
+COPY requirements.txt .
+RUN pip install --upgrade pip && pip install -r requirements.txt
+RUN pip install "unsloth[colab-new] @ git+https://github.com/unslothai/unsloth.git"
+
+COPY . .
+
+CMD ["python", "runpod/train_handler.py"]

@@ -1,0 +1,55 @@
+experiment_name: custom_jsonl_experiment
+dataset_mode: local_jsonl
+dataset_type: custom
+dataset_path: data/sample_alpaca.jsonl
+train_test_split: 0.2
+prompt_template: alpaca
+
+model:
+  base_model: unsloth/Qwen2.5-0.5B
+  max_seq_length: 1024
+  dtype: null
+  load_in_4bit: true
+
+lora:
+  r: 16
+  lora_alpha: 16
+  lora_dropout: 0.0
+  bias: none
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+  use_gradient_checkpointing: unsloth
+  use_rslora: false
+  random_state: 3407
+
+training:
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 4
+  warmup_steps: 5
+  max_steps: 25
+  learning_rate: 0.0002
+  logging_steps: 5
+  optim: adamw_8bit
+  weight_decay: 0.01
+  lr_scheduler_type: linear
+  seed: 3407
+  save_strategy: steps
+  save_steps: 10
+  save_total_limit: 2
+  fp16_full_eval: true
+  per_device_eval_batch_size: 1
+  eval_accumulation_steps: 2
+  eval_strategy: steps
+  eval_steps: 10
+  load_best_model_at_end: true
+  metric_for_best_model: eval_loss
+
+output:
+  output_dir: outputs/custom_jsonl
+  output_adapter_repo: your-hf-username/custom-jsonl-lora

@@ -1,0 +1,28 @@
+platform:
+  execution_mode: local   # local or runpod
+  api_base_url: http://localhost:8000
+
+wandb:
+  entity: your-wandb-entity
+  project: finetuneit-lite
+  default_samples: 1000
+
+runpod:
+  train_endpoint_id:
+  eval_endpoint_id:
+  inference_endpoint_id:
+
+ui:
+  refresh_seconds: 10
+  default_max_runs: 50
+
+registry:
+  champion_model_name: champion_model
+  export_path: registry/experiment_registry.csv
+
+inference:
+  default_base_model: unsloth/Qwen2.5-0.5B
+  default_adapter_repo: your-hf-username/finetuneit-demo-adapter
+  default_prompt_template: alpaca
+  default_max_new_tokens: 128
+  default_temperature: 0.7

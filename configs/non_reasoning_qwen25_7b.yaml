@@ -1,0 +1,57 @@
+experiment_name: qwen25_7b_non_reasoning
+dataset_mode: hf_dataset
+dataset_type: non_reasoning
+dataset_id: tatsu-lab/alpaca
+dataset_split: train
+dataset_sample_size: 2500
+train_test_split: 0.2
+prompt_template: alpaca
+
+model:
+  base_model: unsloth/Qwen2.5-7B
+  max_seq_length: 2048
+  dtype: null
+  load_in_4bit: true
+
+lora:
+  r: 16
+  lora_alpha: 16
+  lora_dropout: 0.0
+  bias: none
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+  use_gradient_checkpointing: unsloth
+  use_rslora: false
+  random_state: 3407
+
+training:
+  per_device_train_batch_size: 2
+  gradient_accumulation_steps: 4
+  warmup_steps: 20
+  max_steps: 250
+  learning_rate: 0.0002
+  logging_steps: 10
+  optim: adamw_8bit
+  weight_decay: 0.1
+  lr_scheduler_type: linear
+  seed: 3407
+  save_strategy: steps
+  save_steps: 50
+  save_total_limit: 2
+  fp16_full_eval: true
+  per_device_eval_batch_size: 2
+  eval_accumulation_steps: 4
+  eval_strategy: steps
+  eval_steps: 50
+  load_best_model_at_end: true
+  metric_for_best_model: eval_loss
+
+output:
+  output_dir: outputs/qwen25_7b_non_reasoning
+  output_adapter_repo: your-hf-username/qwen25-7b-non-reasoning-lora
