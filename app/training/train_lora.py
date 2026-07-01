@@ -98,6 +98,10 @@ def run_training_from_config(config: dict) -> dict:
             dataset_text_field="text",
             dataset_num_proc=int(training_config.get("dataset_num_proc", 2)),
             packing=bool(training_config.get("packing", False)),
+            # Newer TRL (>=1.x) defaults SFTTrainer to padding_free=True, which
+            # refuses a set max_length unless packing is on. Disable it so
+            # max_length truncates normally with packing=False (older behavior).
+            padding_free=bool(training_config.get("padding_free", False)),
         )
 
         trainer = SFTTrainer(
