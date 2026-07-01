@@ -8,6 +8,7 @@ import wandb
 from datasets import load_dataset
 from peft import PeftModel
 from tqdm import tqdm
+from unsloth import FastLanguageModel
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
 from app.evaluation.metrics import compute_text_generation_metrics
@@ -52,15 +53,17 @@ def evaluate_model(
         )
 
         token = get_hf_token()
-        tokenizer = AutoTokenizer.from_pretrained(base_model, token=token)
-
-        model_kwargs = dict(device_map="auto", token=token)
-        if load_in_4bit:
-            model_kwargs["quantization_config"] = BitsAndBytesConfig(load_in_4bit=True)
-        model = AutoModelForCausalLM.from_pretrained(base_model, **model_kwargs)
-
-        if adapter_repo:
-            model = PeftModel.from_pretrained(model, adapter_repo, token=token)
+        # Load through Unsloth (matching training/inference) so its patched
+        # attention is wired up; loading via plain transformers while unsloth is
+        # imported yields models missing apply_qkv etc. If an adapter repo is
+        # given, load it directly (its config references the base model).
+        model_name = adapter_repo or base_model
+        model, tokenizer = FastLanguageModel.from_pretrained(
+            model_name=model_name,
+            max_seq_length=1024,
+            load_in_4bit=load_in_4bit,
+            token=token,
+        )
         model.eval()
 
         dataset = load_dataset("json", data_files=dataset_path, split="train")

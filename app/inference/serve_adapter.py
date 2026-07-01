@@ -1,6 +1,11 @@
 import os
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
-from peft import PeftModel
+
+# Import unsloth first so it patches the transformers attention classes. Loading
+# a plain transformers model while unsloth is imported elsewhere in the process
+# yields attention layers that expect Unsloth's patched methods (apply_qkv, ...)
+# and raises AttributeError at generation. Loading through FastLanguageModel
+# wires those up correctly (and gives 2x-faster inference).
+from unsloth import FastLanguageModel
 
 from app.training.prompt_templates import build_inference_prompt
 from app.core.secrets import apply_secrets_to_environment, get_hf_token
@@ -16,19 +21,17 @@ def _load(base_model: str, adapter_repo: str, load_in_4bit: bool):
         return _MODEL_CACHE[cache_key]
 
     token = get_hf_token()
-    tokenizer = AutoTokenizer.from_pretrained(base_model, token=token)
-
-    kwargs = dict(device_map="auto", token=token)
-    if load_in_4bit:
-        # Serve in the same precision as training (QLoRA) to preserve accuracy
-        # and avoid loading the full-precision base model into VRAM.
-        kwargs["quantization_config"] = BitsAndBytesConfig(load_in_4bit=True)
-
-    model = AutoModelForCausalLM.from_pretrained(base_model, **kwargs)
-
-    if adapter_repo:
-        model = PeftModel.from_pretrained(model, adapter_repo, token=token)
-    model.eval()
+    # If an adapter repo is given, load it directly: its adapter_config.json
+    # references the base model, so Unsloth reconstructs base + adapter in one
+    # step. Otherwise load the base model alone.
+    model_name = adapter_repo or base_model
+    model, tokenizer = FastLanguageModel.from_pretrained(
+        model_name=model_name,
+        max_seq_length=2048,
+        load_in_4bit=load_in_4bit,
+        token=token,
+    )
+    FastLanguageModel.for_inference(model)  # 2x faster inference
 
     _MODEL_CACHE[cache_key] = (model, tokenizer)
     return model, tokenizer
