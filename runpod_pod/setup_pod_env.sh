@@ -43,7 +43,7 @@ echo "Installing project requirements (torch is reused, not reinstalled)..."
 $PYTHON -m pip install -r requirements.txt --break-system-packages
 
 echo "Installing Unsloth WITHOUT touching torch..."
-$PYTHON -m pip install unsloth unsloth_zoo --no-deps --break-system-packages
+$PYTHON -m pip install "unsloth==2026.6.9" "unsloth_zoo==2026.6.7" --no-deps --break-system-packages
 
 echo "Verifying..."
 $PYTHON - <<'PY'
