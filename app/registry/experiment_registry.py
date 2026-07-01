@@ -7,6 +7,7 @@ import wandb
 
 from app.registry.scoring import compute_model_score
 from app.core.secrets import apply_secrets_to_environment
+from app.core.json_utils import json_safe
 
 
 REGISTRY_DIR = Path("registry")
@@ -67,7 +68,9 @@ def list_wandb_runs(entity: str, project: str, max_runs: int = 50) -> list[dict]
             })
 
     rows = sorted(rows, key=lambda x: x.get("model_score", 0), reverse=True)
-    return rows
+    # Metrics pulled from run.summary (eval/loss, ROUGE-L, ...) can be NaN, which
+    # FastAPI's JSON encoder rejects. Sanitize before returning.
+    return json_safe(rows)
 
 
 def save_champion_model(model_record: dict, name: str = "champion_model") -> dict:
@@ -76,11 +79,11 @@ def save_champion_model(model_record: dict, name: str = "champion_model") -> dic
     with path.open("w", encoding="utf-8") as f:
         json.dump(model_record, f, indent=2)
 
-    return {
+    return json_safe({
         "status": "saved",
         "registry_path": str(path),
         "model": model_record,
-    }
+    })
 
 
 def load_champion_model(name: str = "champion_model") -> dict:
@@ -90,7 +93,7 @@ def load_champion_model(name: str = "champion_model") -> dict:
         return {}
 
     with path.open("r", encoding="utf-8") as f:
-        return json.load(f)
+        return json_safe(json.load(f))
 
 
 def export_registry_csv(rows: list[dict], path: str = "registry/experiment_registry.csv") -> dict:
