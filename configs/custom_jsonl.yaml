@@ -6,7 +6,7 @@ train_test_split: 0.2
 prompt_template: alpaca
 
 model:
-  base_model: unsloth/Qwen2.5-0.5B
+  base_model: unsloth/Qwen2.5-0.5B-Instruct
   max_seq_length: 1024
   dtype: null
   load_in_4bit: true

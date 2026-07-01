@@ -21,7 +21,7 @@ registry:
   export_path: registry/experiment_registry.csv
 
 inference:
-  default_base_model: unsloth/Qwen2.5-0.5B
+  default_base_model: unsloth/Qwen2.5-0.5B-Instruct
   default_adapter_repo: your-hf-username/finetuneit-demo-adapter
   default_prompt_template: alpaca
   default_max_new_tokens: 128
