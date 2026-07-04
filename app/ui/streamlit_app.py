@@ -113,6 +113,22 @@ def model_selector(label, default, key):
     return choice
 
 
+def resolve_template_type(detected, model_name, scope):
+    """Effective template type = detected, unless the user overrides. The radio
+    key includes the model name so switching models re-seeds it from the newly
+    detected value (a keyed radio otherwise ignores its index= on reruns and
+    would 'stick' to a stale value, desyncing the payload from the UI)."""
+    with st.expander("Advanced: override template type"):
+        return st.radio(
+            "Template type",
+            ["instruction", "chat"],
+            index=["instruction", "chat"].index(detected),
+            key=f"tt_{scope}_{model_name}",
+            help="Auto-set from the model. Override only if detection is wrong.",
+            horizontal=True,
+        )
+
+
 def render_model_style_cue(info):
     """Show a short badge + one-line explanation of the detected model style."""
     if info["template_type"] == "chat":
@@ -184,8 +200,9 @@ with tab_train:
         key="train_base_model",
     )
     _style = detect_model_style(config["model"]["base_model"], API_BASE)
-    config["template_type"] = _style["template_type"]
     render_model_style_cue(_style)
+    config["template_type"] = resolve_template_type(
+        _style["template_type"], config["model"]["base_model"], "train")
 
     col1, col2 = st.columns(2)
 
@@ -236,15 +253,6 @@ with tab_train:
                 help="Column with role/content turns (e.g. 'messages' or 'conversations'). "
                      "Leave blank to auto-wrap instruction/input/output into a chat.",
             ) or None
-
-        with st.expander("Advanced: override template type"):
-            config["template_type"] = st.radio(
-                "Template type",
-                ["instruction", "chat"],
-                index=["instruction", "chat"].index(config["template_type"]),
-                help="Auto-set from the model. Override only if detection is wrong.",
-                horizontal=True,
-            )
 
     with col2:
         st.subheader("Model Settings")
@@ -542,17 +550,11 @@ with tab_eval:
     eval_dataset = st.text_input("Evaluation Dataset Path", "data/sample_alpaca.jsonl")
     _eval_style = detect_model_style(eval_base_model, API_BASE)
     render_model_style_cue(_eval_style)
-    eval_template_type = _eval_style["template_type"]
+    eval_template_type = resolve_template_type(_eval_style["template_type"], eval_base_model, "eval")
     if eval_template_type == "instruction":
         prompt_template = st.selectbox("Evaluation Prompt Template", ["alpaca", "reasoning_alpaca", "instruction_only"])
     else:
         prompt_template = "alpaca"
-    with st.expander("Advanced: override template type"):
-        eval_template_type = st.radio(
-            "Template type", ["instruction", "chat"],
-            index=["instruction", "chat"].index(eval_template_type),
-            horizontal=True, key="eval_tt_override",
-        )
     num_samples = st.number_input("Number of Eval Samples", min_value=1, value=5)
 
     if st.button("Start Evaluation"):
@@ -592,7 +594,7 @@ with tab_infer:
 
     _infer_style = detect_model_style(infer_base_model, API_BASE)
     render_model_style_cue(_infer_style)
-    infer_template_type = _infer_style["template_type"]
+    infer_template_type = resolve_template_type(_infer_style["template_type"], infer_base_model, "infer")
 
     template_options = ["alpaca", "reasoning_alpaca", "instruction_only"]
     default_template = st.session_state.get("infer_prompt_template", champion.get("prompt_template", inference_cfg.get("default_prompt_template", "alpaca")))
@@ -608,12 +610,6 @@ with tab_infer:
         )
     else:
         infer_prompt_template = "alpaca"
-    with st.expander("Advanced: override template type"):
-        infer_template_type = st.radio(
-            "Template type", ["instruction", "chat"],
-            index=["instruction", "chat"].index(infer_template_type),
-            horizontal=True, key="infer_tt_override",
-        )
     prompt = st.text_area("Prompt", "Explain credit risk in simple terms.")
     input_text = st.text_area("Optional Input Context", "")
     max_new_tokens = st.slider("Max New Tokens", 32, 1024, int(inference_cfg.get("default_max_new_tokens", 128)))
