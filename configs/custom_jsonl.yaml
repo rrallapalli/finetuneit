@@ -3,7 +3,9 @@ dataset_mode: local_jsonl
 dataset_type: custom
 dataset_path: data/sample_alpaca.jsonl
 train_test_split: 0.2
-prompt_template: alpaca
+prompt_template: alpaca        # used when template_type=instruction
+template_type: instruction     # instruction (Alpaca, base models) | chat (chat template, instruct models)
+# messages_column: messages    # for template_type=chat with a conversational column
 
 model:
   base_model: unsloth/Qwen2.5-0.5B-Instruct

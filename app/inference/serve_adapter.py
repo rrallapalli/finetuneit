@@ -7,7 +7,11 @@ import os
 # wires those up correctly (and gives 2x-faster inference).
 from unsloth import FastLanguageModel
 
-from app.training.prompt_templates import build_inference_prompt
+from app.training.prompt_templates import (
+    build_inference_prompt,
+    build_chat_generation_prompt,
+    instruction_to_messages,
+)
 from app.core.secrets import apply_secrets_to_environment, get_hf_token
 
 # Module-level cache so repeated calls (FastAPI local mode) don't reload the
@@ -45,14 +49,21 @@ def generate_response(
     prompt_template: str = "alpaca",
     max_new_tokens: int = 128,
     load_in_4bit: bool = True,
+    template_type: str = "instruction",
 ) -> str:
     apply_secrets_to_environment()
 
     try:
         model, tokenizer = _load(base_model, adapter_repo, load_in_4bit)
 
-        formatted_prompt = build_inference_prompt(prompt, input_text, prompt_template)
+        if template_type == "chat":
+            messages = instruction_to_messages(prompt, input_text)  # user turn only
+            formatted_prompt = build_chat_generation_prompt(messages, tokenizer)
+        else:
+            formatted_prompt = build_inference_prompt(prompt, input_text, prompt_template)
+
         inputs = tokenizer(formatted_prompt, return_tensors="pt").to(model.device)
+        prompt_len = inputs["input_ids"].shape[-1]
 
         outputs = model.generate(
             **inputs,
@@ -61,7 +72,10 @@ def generate_response(
             temperature=0.7,
         )
 
-        decoded = tokenizer.decode(outputs[0], skip_special_tokens=True)
-        return decoded.split("### Response:")[-1].strip()
+        # Decode only the generated continuation. Template-agnostic: works for
+        # chat and instruction formats without depending on a "### Response:"
+        # marker (which base models often don't emit).
+        generated = outputs[0][prompt_len:]
+        return tokenizer.decode(generated, skip_special_tokens=True).strip()
     except Exception as exc:
         return f"[inference error] {type(exc).__name__}: {exc}"

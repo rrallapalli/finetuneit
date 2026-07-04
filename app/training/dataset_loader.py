@@ -1,5 +1,10 @@
 from datasets import load_dataset
-from app.training.prompt_templates import build_prompt
+from app.training.prompt_templates import (
+    build_prompt,
+    build_chat_training_text,
+    normalize_conversation,
+    instruction_to_messages,
+)
 
 
 def load_and_prepare_dataset(config: dict, tokenizer):
@@ -39,19 +44,50 @@ def load_and_prepare_dataset(config: dict, tokenizer):
         dataset = dataset.rename_columns(rename_map)
 
     eos_token = tokenizer.eos_token or ""
+    template_type = config.get("template_type", "instruction")
 
-    def format_examples(examples):
-        texts = []
-        for i in range(len(examples["instruction"])):
-            row = {
-                "instruction": examples["instruction"][i],
-                "input": examples["input"][i] if "input" in examples else "",
-                "output": examples["output"][i],
-            }
-            texts.append(build_prompt(row, prompt_template, eos_token=eos_token))
-        return {"text": texts}
+    if template_type == "chat":
+        # Chat path: use the tokenizer's own chat template. Accepts a
+        # conversational column (messages / conversations) OR falls back to
+        # wrapping instruction/input/output into a 2-turn chat. The chat template
+        # supplies its own turn/eos tokens, so we do NOT append eos_token here.
+        conv_col = None
+        for candidate in (config.get("messages_column"), "messages", "conversations"):
+            if candidate and candidate in dataset.column_names:
+                conv_col = candidate
+                break
 
-    dataset = dataset.map(format_examples, batched=True)
+        def format_chat(examples):
+            texts = []
+            if conv_col:
+                for conversation in examples[conv_col]:
+                    messages = normalize_conversation(conversation)
+                    texts.append(build_chat_training_text(messages, tokenizer))
+            else:
+                n = len(examples["instruction"])
+                for i in range(n):
+                    inp = examples["input"][i] if "input" in examples else ""
+                    messages = instruction_to_messages(
+                        examples["instruction"][i], inp, examples["output"][i]
+                    )
+                    texts.append(build_chat_training_text(messages, tokenizer))
+            return {"text": texts}
+
+        dataset = dataset.map(format_chat, batched=True)
+
+    else:
+        def format_examples(examples):
+            texts = []
+            for i in range(len(examples["instruction"])):
+                row = {
+                    "instruction": examples["instruction"][i],
+                    "input": examples["input"][i] if "input" in examples else "",
+                    "output": examples["output"][i],
+                }
+                texts.append(build_prompt(row, prompt_template, eos_token=eos_token))
+            return {"text": texts}
+
+        dataset = dataset.map(format_examples, batched=True)
 
     if filter_max_tokens:
         dataset = dataset.filter(

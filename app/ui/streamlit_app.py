@@ -149,6 +149,21 @@ with tab_train:
             index=["alpaca", "reasoning_alpaca", "instruction_only"].index(config.get("prompt_template", "alpaca")),
             help=HELP["prompt_template"],
         )
+        config["template_type"] = st.selectbox(
+            "Template Type",
+            ["instruction", "chat"],
+            index=["instruction", "chat"].index(config.get("template_type", "instruction")),
+            help="instruction = Alpaca-style ### Instruction/Response (base models). "
+                 "chat = the model's own chat template via apply_chat_template (instruct models); "
+                 "accepts a messages/conversations column or auto-wraps instruction/input/output.",
+        )
+        if config["template_type"] == "chat":
+            config["messages_column"] = st.text_input(
+                "Conversations Column (optional)",
+                config.get("messages_column", ""),
+                help="Column holding a list of role/content turns (e.g. 'messages' or 'conversations'). "
+                     "Leave blank to auto-wrap instruction/input/output into a chat.",
+            ) or None
 
     with col2:
         st.subheader("Model")
@@ -460,6 +475,7 @@ with tab_eval:
     adapter_repo = st.text_input("Adapter Repo", "your-hf-username/finetuneit-demo-adapter")
     eval_dataset = st.text_input("Evaluation Dataset Path", "data/sample_alpaca.jsonl")
     prompt_template = st.selectbox("Evaluation Prompt Template", ["alpaca", "reasoning_alpaca", "instruction_only"])
+    eval_template_type = st.selectbox("Evaluation Template Type", ["instruction", "chat"])
     num_samples = st.number_input("Number of Eval Samples", min_value=1, value=5)
 
     if st.button("Start Evaluation"):
@@ -470,6 +486,7 @@ with tab_eval:
             "dataset": eval_dataset,
             "num_samples": num_samples,
             "prompt_template": prompt_template,
+            "template_type": eval_template_type,
             "output_path": "outputs/evaluation_metrics.csv",
         }
         result = safe_post(f"{API_BASE}/evaluation/run", payload)
@@ -507,6 +524,7 @@ with tab_infer:
         index=template_options.index(default_template),
         key="infer_prompt_template",
     )
+    infer_template_type = st.selectbox("Template Type", ["instruction", "chat"], key="infer_template_type")
     prompt = st.text_area("Prompt", "Explain credit risk in simple terms.")
     input_text = st.text_area("Optional Input Context", "")
     max_new_tokens = st.slider("Max New Tokens", 32, 1024, int(inference_cfg.get("default_max_new_tokens", 128)))
@@ -518,6 +536,7 @@ with tab_infer:
             "prompt": prompt,
             "input_text": input_text,
             "prompt_template": infer_prompt_template,
+            "template_type": infer_template_type,
             "max_new_tokens": max_new_tokens,
         }
         result = safe_post(f"{API_BASE}/inference/", payload)

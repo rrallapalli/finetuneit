@@ -13,7 +13,11 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
 from app.evaluation.metrics import compute_text_generation_metrics
 from app.core.secrets import apply_secrets_to_environment, get_hf_token, get_wandb_api_key
-from app.training.prompt_templates import build_inference_prompt
+from app.training.prompt_templates import (
+    build_inference_prompt,
+    build_chat_generation_prompt,
+    instruction_to_messages,
+)
 
 
 def evaluate_model(
@@ -27,6 +31,7 @@ def evaluate_model(
     prompt_template: str = "alpaca",
     max_new_tokens: int = 256,
     load_in_4bit: bool = True,
+    template_type: str = "instruction",
 ) -> dict:
     apply_secrets_to_environment()
 
@@ -76,7 +81,11 @@ def evaluate_model(
             input_text = example.get("input", "")
             reference = example.get("output", "")
 
-            prompt = build_inference_prompt(instruction, input_text, prompt_template)
+            if template_type == "chat":
+                prompt = build_chat_generation_prompt(
+                    instruction_to_messages(instruction, input_text), tokenizer)
+            else:
+                prompt = build_inference_prompt(instruction, input_text, prompt_template)
             inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
             input_len = inputs["input_ids"].shape[-1]
 
@@ -101,8 +110,7 @@ def evaluate_model(
             latency = time.time() - start_time
             output_len = outputs.shape[-1] - input_len
 
-            decoded = tokenizer.decode(outputs[0], skip_special_tokens=True)
-            response = decoded.split("### Response:")[-1].strip()
+            response = tokenizer.decode(outputs[0][input_len:], skip_special_tokens=True).strip()
 
             full_text = prompt + "\n" + reference
             ppl_inputs = tokenizer(full_text, return_tensors="pt", truncation=True, max_length=1024).to(model.device)

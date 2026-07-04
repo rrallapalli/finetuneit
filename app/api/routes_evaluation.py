@@ -20,6 +20,7 @@ def create_evaluation_job(payload: dict):
             job_id=payload.get("job_id", "eval-job"),
             prompt_template=payload.get("prompt_template", "alpaca"),
             max_new_tokens=payload.get("max_new_tokens", 256),
+            template_type=payload.get("template_type", "instruction"),
         )
 
     endpoint_id = get_runpod_endpoint("eval")

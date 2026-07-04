@@ -1,0 +1,55 @@
+# Example: instruct model + chat template.
+# Works with either a conversational dataset (a messages/conversations column)
+# or plain instruction/input/output data (auto-wrapped into a chat).
+experiment_name: chat_experiment
+dataset_mode: local_jsonl
+dataset_type: custom
+dataset_path: data/sample_alpaca.jsonl
+train_test_split: 0.2
+
+template_type: chat            # use the model's chat template
+# messages_column: messages   # set if your data has a conversational column
+
+model:
+  base_model: unsloth/Qwen2.5-0.5B-Instruct   # an INSTRUCT model (ships a chat template)
+  max_seq_length: 2048
+  dtype: null
+  load_in_4bit: true
+
+lora:
+  r: 16
+  lora_alpha: 16
+  lora_dropout: 0.0
+  bias: none
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+  use_gradient_checkpointing: unsloth
+  use_rslora: false
+  random_state: 3407
+
+training:
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 4
+  warmup_steps: 5
+  max_steps: 60
+  learning_rate: 0.0002
+  logging_steps: 5
+  optim: adamw_8bit
+  weight_decay: 0.01
+  lr_scheduler_type: linear
+  seed: 3407
+  save_strategy: steps
+  save_steps: 20
+  save_total_limit: 2
+  per_device_eval_batch_size: 1
+  eval_accumulation_steps: 2
+  eval_strategy: steps
+  eval_steps: 20
+  load_best_model_at_end: true
+  metric_for_best_model: eval_loss
+
+output:
+  output_dir: outputs/chat_experiment
+  output_adapter_repo: your-hf-username/chat-lora
+  export_merged: false
+  export_gguf: false
+  gguf_quantization: q4_k_m
