@@ -12,6 +12,7 @@ def handler(job):
             input_text=payload.get("input_text", ""),
             prompt_template=payload.get("prompt_template", "alpaca"),
             max_new_tokens=payload.get("max_new_tokens", 128),
+            template_type=payload.get("template_type", "instruction"),
         )
         return {"response": response}
     except Exception as exc:

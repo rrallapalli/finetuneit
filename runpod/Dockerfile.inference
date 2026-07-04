@@ -1,9 +1,17 @@
-FROM pytorch/pytorch:2.2.0-cuda12.1-cudnn8-runtime
+# Base image provides a CUDA-matched PyTorch (torch 2.8 / cu12.8) that matches the
+# pinned, GPU-verified stack. If this exact tag is unavailable, use another image
+# that provides torch 2.8.x + CUDA 12.8. Adjust here only.
+FROM pytorch/pytorch:2.8.0-cuda12.8-cudnn9-runtime
 
 WORKDIR /workspace
 
+# Pinned requirements (torch intentionally not listed — provided by the base image).
 COPY requirements.txt .
 RUN pip install --upgrade pip && pip install -r requirements.txt
+
+# Install Unsloth WITHOUT touching torch (matches setup_pod_env.sh). All three
+# workers import unsloth (train/inference/eval), so this is required in each.
+RUN pip install "unsloth==2026.6.9" "unsloth_zoo==2026.6.7" --no-deps
 
 COPY . .
 
