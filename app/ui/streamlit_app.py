@@ -80,6 +80,39 @@ def detect_model_style(model_name, api_base):
                 "source": "name_heuristic", "has_chat_template": None}
 
 
+MODEL_OPTIONS = [
+    "unsloth/Qwen2.5-0.5B-Instruct",
+    "unsloth/Qwen2.5-1.5B-Instruct",
+    "unsloth/Qwen2.5-3B-Instruct",
+    "unsloth/Qwen2.5-7B-Instruct",
+    "unsloth/Qwen2.5-0.5B",
+    "unsloth/Qwen2.5-1.5B",
+    "unsloth/Qwen2.5-3B",
+    "unsloth/Qwen2.5-7B",
+]
+_OTHER_MODEL = "Other (enter model id)…"
+
+
+def model_selector(label, default, key):
+    """A model dropdown shared by Train / Evaluate / Inference. Includes an
+    'Other' escape hatch so custom or private model ids still work. Value can be
+    pre-filled by setting st.session_state[key] before this runs."""
+    options = list(MODEL_OPTIONS)
+    current = st.session_state.get(key, default)
+    if current and current not in options:
+        options.insert(0, current)
+    options.append(_OTHER_MODEL)
+    if key not in st.session_state:
+        st.session_state[key] = default if default in options else options[0]
+    choice = st.selectbox(
+        label, options, key=key,
+        help="Chat/instruct vs base is detected automatically.",
+    )
+    if choice == _OTHER_MODEL:
+        return st.text_input(f"{label} — enter model id", key=f"{key}_custom").strip()
+    return choice
+
+
 def render_model_style_cue(info):
     """Show a short badge + one-line explanation of the detected model style."""
     if info["template_type"] == "chat":
@@ -145,24 +178,9 @@ with tab_train:
     # Model is the primary choice — select it first (full width) so the template
     # cue below reflects the current selection immediately (no one-run lag).
     st.subheader("Model")
-    model_options = [
-        "unsloth/Qwen2.5-0.5B-Instruct",
-        "unsloth/Qwen2.5-1.5B-Instruct",
-        "unsloth/Qwen2.5-3B-Instruct",
-        "unsloth/Qwen2.5-7B-Instruct",
-        "unsloth/Qwen2.5-0.5B",
-        "unsloth/Qwen2.5-1.5B",
-        "unsloth/Qwen2.5-3B",
-        "unsloth/Qwen2.5-7B",
-    ]
-    default_model = config["model"].get("base_model", "unsloth/Qwen2.5-0.5B-Instruct")
-    if default_model not in model_options:
-        model_options.insert(0, default_model)
-    config["model"]["base_model"] = st.selectbox(
+    config["model"]["base_model"] = model_selector(
         "Base Model",
-        model_options,
-        index=model_options.index(default_model),
-        help=HELP["base_model"] + " Chat/instruct vs base is detected automatically.",
+        config["model"].get("base_model", "unsloth/Qwen2.5-0.5B-Instruct"),
         key="train_base_model",
     )
     _style = detect_model_style(config["model"]["base_model"], API_BASE)
@@ -518,7 +536,8 @@ with tab_eval:
     st.header("Launch Evaluation Job")
 
     eval_job_id = st.text_input("Evaluation Job ID", "eval-demo-001")
-    eval_base_model = st.text_input("Evaluation Base Model", "unsloth/Qwen2.5-0.5B-Instruct")
+    eval_base_model = model_selector(
+        "Evaluation Base Model", "unsloth/Qwen2.5-0.5B-Instruct", key="eval_base_model")
     adapter_repo = st.text_input("Adapter Repo", "your-hf-username/finetuneit-demo-adapter")
     eval_dataset = st.text_input("Evaluation Dataset Path", "data/sample_alpaca.jsonl")
     _eval_style = detect_model_style(eval_base_model, API_BASE)
@@ -560,9 +579,9 @@ with tab_infer:
     if champion:
         st.info(f"Champion selected: {champion.get('run_name') or champion.get('run_id')} | score={champion.get('model_score')}")
 
-    infer_base_model = st.text_input(
+    infer_base_model = model_selector(
         "Inference Base Model",
-        st.session_state.get("infer_base_model", champion.get("base_model", inference_cfg.get("default_base_model", "unsloth/Qwen2.5-0.5B-Instruct"))),
+        champion.get("base_model", inference_cfg.get("default_base_model", "unsloth/Qwen2.5-0.5B-Instruct")),
         key="infer_base_model",
     )
     infer_adapter_repo = st.text_input(
