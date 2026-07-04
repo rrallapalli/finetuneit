@@ -44,6 +44,17 @@ def compute_f1(reference: str, prediction: str) -> float:
     return 2 * precision * recall / (precision + recall)
 
 
+def _safe(fn, default=None):
+    """Run a metric computation, returning default if it raises. Some metrics
+    divide by zero on empty/degenerate predictions, and some metric libraries
+    (e.g. bertscore) break against newer transformers. Guarding each one means a
+    single failing metric returns None instead of failing the whole evaluation."""
+    try:
+        return fn()
+    except Exception:
+        return default
+
+
 def compute_text_generation_metrics(
     predictions: list[str],
     references: list[str],
@@ -55,38 +66,46 @@ def compute_text_generation_metrics(
     predictions = [p.strip() for p in predictions]
     references = [r.strip() for r in references]
 
-    rouge = evaluate.load("rouge").compute(predictions=predictions, references=references)
-    bleu = evaluate.load("bleu").compute(predictions=predictions, references=[[r] for r in references])
-    bert = evaluate.load("bertscore").compute(predictions=predictions, references=references, lang="en")
-    meteor = evaluate.load("meteor").compute(predictions=predictions, references=references)
+    rouge = _safe(lambda: evaluate.load("rouge").compute(
+        predictions=predictions, references=references), {}) or {}
+    bleu = _safe(lambda: evaluate.load("bleu").compute(
+        predictions=predictions, references=[[r] for r in references]), {}) or {}
+    bert = _safe(lambda: evaluate.load("bertscore").compute(
+        predictions=predictions, references=references, lang="en"))
+    meteor = _safe(lambda: evaluate.load("meteor").compute(
+        predictions=predictions, references=references), {}) or {}
 
     exact_matches = [int(p == r) for p, r in zip(predictions, references)]
     squad_exact = [compute_exact(ref, pred) for ref, pred in zip(references, predictions)]
     squad_f1 = [compute_f1(ref, pred) for ref, pred in zip(references, predictions)]
 
     smooth = SmoothingFunction().method1
-    mt_bleu_scores = [
+    mt_bleu_scores = _safe(lambda: [
         sentence_bleu([ref.split()], pred.split(), smoothing_function=smooth)
         for ref, pred in zip(references, predictions)
-    ]
+    ], [])
 
     mt_length_ratios = [
         len(pred.split()) / max(len(ref.split()), 1)
         for ref, pred in zip(references, predictions)
     ]
 
+    bert_f1 = None
+    if bert and bert.get("f1"):
+        bert_f1 = float(np.mean(bert["f1"]))
+
     return {
-        "ROUGE-1": rouge["rouge1"],
-        "ROUGE-2": rouge["rouge2"],
-        "ROUGE-L": rouge["rougeL"],
-        "BLEU": bleu["bleu"],
-        "BERTScore (F1)": float(np.mean(bert["f1"])),
-        "Exact Match": float(np.mean(exact_matches)),
-        "METEOR Score": meteor["meteor"],
-        "SQuAD EM": float(np.mean(squad_exact)),
-        "SQuAD F1": float(np.mean(squad_f1)),
-        "MT-BLEU mean": float(mean(mt_bleu_scores)),
-        "MT length ratio": float(mean(mt_length_ratios)),
+        "ROUGE-1": rouge.get("rouge1"),
+        "ROUGE-2": rouge.get("rouge2"),
+        "ROUGE-L": rouge.get("rougeL"),
+        "BLEU": bleu.get("bleu"),
+        "BERTScore (F1)": bert_f1,
+        "Exact Match": float(np.mean(exact_matches)) if exact_matches else None,
+        "METEOR Score": meteor.get("meteor"),
+        "SQuAD EM": float(np.mean(squad_exact)) if squad_exact else None,
+        "SQuAD F1": float(np.mean(squad_f1)) if squad_f1 else None,
+        "MT-BLEU mean": float(mean(mt_bleu_scores)) if mt_bleu_scores else None,
+        "MT length ratio": float(mean(mt_length_ratios)) if mt_length_ratios else None,
         "Average Perplexity": float(np.mean(perplexities)) if perplexities else None,
         "Average Latency (sec)": float(np.mean(latencies)) if latencies else None,
         "Average Throughput (token/sec)": float(np.mean(throughputs)) if throughputs else None,

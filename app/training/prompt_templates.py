@@ -86,8 +86,19 @@ def instruction_to_messages(instruction: str, input_text: str = "", output=None)
     return messages
 
 
+def _require_chat_template(tokenizer):
+    if getattr(tokenizer, "chat_template", None) is None:
+        raise ValueError(
+            "template_type='chat' requires a model whose tokenizer has a chat "
+            "template. This model has none (base models usually don't). Use an "
+            "instruct model (e.g. a '-Instruct' variant), or set "
+            "template_type='instruction'."
+        )
+
+
 def build_chat_training_text(messages: list, tokenizer) -> str:
     """Full conversation (including the assistant turn) as a training string."""
+    _require_chat_template(tokenizer)
     return tokenizer.apply_chat_template(
         messages, tokenize=False, add_generation_prompt=False
     )
@@ -95,6 +106,7 @@ def build_chat_training_text(messages: list, tokenizer) -> str:
 
 def build_chat_generation_prompt(messages: list, tokenizer) -> str:
     """Conversation up to (and including) the generation prompt for inference."""
+    _require_chat_template(tokenizer)
     return tokenizer.apply_chat_template(
         messages, tokenize=False, add_generation_prompt=True
     )
