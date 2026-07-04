@@ -60,6 +60,38 @@ HELP = {
 }
 
 
+# --- Model-style detection + cues (auto-detect chat vs base so users don't
+# have to reason about template_type / prompt_template combinations) ---
+@st.cache_data(show_spinner=False)
+def detect_model_style(model_name, api_base):
+    """Return {'template_type': 'chat'|'instruction', 'source': ...}. Asks the
+    backend (tokenizer chat_template = ground truth); falls back to a name
+    heuristic if the backend is unreachable."""
+    if not model_name:
+        return {"template_type": "instruction", "source": "default", "has_chat_template": None}
+    try:
+        r = requests.get(f"{api_base}/model/detect", params={"model_name": model_name}, timeout=(10, 120))
+        r.raise_for_status()
+        return r.json()
+    except Exception:
+        name = model_name.lower()
+        looks_chat = any(h in name for h in ("instruct", "-chat", "chat-", "-it", "_it", "sft"))
+        return {"template_type": "chat" if looks_chat else "instruction",
+                "source": "name_heuristic", "has_chat_template": None}
+
+
+def render_model_style_cue(info):
+    """Show a short badge + one-line explanation of the detected model style."""
+    if info["template_type"] == "chat":
+        st.success("**Chat / instruct model** — will use the model's built-in chat template. "
+                   "No prompt-template choice needed.")
+    else:
+        st.info("**Base / completion model** — will use an instruction-style prompt template (choose it below).")
+    if info.get("source") == "name_heuristic":
+        st.caption("Detected from the model name (couldn't load the tokenizer). Use Advanced to override if wrong.")
+
+
+
 def load_yaml(path):
     with open(path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
@@ -110,6 +142,33 @@ with tab_train:
     profile_name = st.selectbox("Experiment Profile", list(PROFILE_MAP.keys()))
     config = load_yaml(PROFILE_MAP[profile_name])
 
+    # Model is the primary choice — select it first (full width) so the template
+    # cue below reflects the current selection immediately (no one-run lag).
+    st.subheader("Model")
+    model_options = [
+        "unsloth/Qwen2.5-0.5B-Instruct",
+        "unsloth/Qwen2.5-1.5B-Instruct",
+        "unsloth/Qwen2.5-3B-Instruct",
+        "unsloth/Qwen2.5-7B-Instruct",
+        "unsloth/Qwen2.5-0.5B",
+        "unsloth/Qwen2.5-1.5B",
+        "unsloth/Qwen2.5-3B",
+        "unsloth/Qwen2.5-7B",
+    ]
+    default_model = config["model"].get("base_model", "unsloth/Qwen2.5-0.5B-Instruct")
+    if default_model not in model_options:
+        model_options.insert(0, default_model)
+    config["model"]["base_model"] = st.selectbox(
+        "Base Model",
+        model_options,
+        index=model_options.index(default_model),
+        help=HELP["base_model"] + " Chat/instruct vs base is detected automatically.",
+        key="train_base_model",
+    )
+    _style = detect_model_style(config["model"]["base_model"], API_BASE)
+    config["template_type"] = _style["template_type"]
+    render_model_style_cue(_style)
+
     col1, col2 = st.columns(2)
 
     with col1:
@@ -143,46 +202,34 @@ with tab_train:
             0.05,
             help=HELP["train_test_split"],
         )
-        config["prompt_template"] = st.selectbox(
-            "Prompt Template",
-            ["alpaca", "reasoning_alpaca", "instruction_only"],
-            index=["alpaca", "reasoning_alpaca", "instruction_only"].index(config.get("prompt_template", "alpaca")),
-            help=HELP["prompt_template"],
-        )
-        config["template_type"] = st.selectbox(
-            "Template Type",
-            ["instruction", "chat"],
-            index=["instruction", "chat"].index(config.get("template_type", "instruction")),
-            help="instruction = Alpaca-style ### Instruction/Response (base models). "
-                 "chat = the model's own chat template via apply_chat_template (instruct models); "
-                 "accepts a messages/conversations column or auto-wraps instruction/input/output.",
-        )
-        if config["template_type"] == "chat":
+        # Model style already detected above; render only the fields it gates.
+        if config["template_type"] == "instruction":
+            config["prompt_template"] = st.selectbox(
+                "Prompt Template",
+                ["alpaca", "reasoning_alpaca", "instruction_only"],
+                index=["alpaca", "reasoning_alpaca", "instruction_only"].index(config.get("prompt_template", "alpaca")),
+                help=HELP["prompt_template"],
+            )
+        else:
+            config["prompt_template"] = config.get("prompt_template", "alpaca")
             config["messages_column"] = st.text_input(
                 "Conversations Column (optional)",
-                config.get("messages_column", ""),
-                help="Column holding a list of role/content turns (e.g. 'messages' or 'conversations'). "
+                config.get("messages_column", "") or "",
+                help="Column with role/content turns (e.g. 'messages' or 'conversations'). "
                      "Leave blank to auto-wrap instruction/input/output into a chat.",
             ) or None
 
+        with st.expander("Advanced: override template type"):
+            config["template_type"] = st.radio(
+                "Template type",
+                ["instruction", "chat"],
+                index=["instruction", "chat"].index(config["template_type"]),
+                help="Auto-set from the model. Override only if detection is wrong.",
+                horizontal=True,
+            )
+
     with col2:
-        st.subheader("Model")
-        model_options = [
-            "unsloth/Qwen2.5-0.5B",
-            "unsloth/Qwen2.5-1.5B",
-            "unsloth/Qwen2.5-3B",
-            "unsloth/Qwen2.5-7B",
-            "unsloth/Qwen2.5-14B",
-        ]
-        default_model = config["model"].get("base_model", "unsloth/Qwen2.5-0.5B")
-        if default_model not in model_options:
-            model_options.insert(0, default_model)
-        config["model"]["base_model"] = st.selectbox(
-            "Base Model",
-            model_options,
-            index=model_options.index(default_model),
-            help=HELP["base_model"],
-        )
+        st.subheader("Model Settings")
         config["model"]["max_seq_length"] = st.selectbox(
             "Max Sequence Length",
             [512, 1024, 2048, 4096],
@@ -471,11 +518,22 @@ with tab_eval:
     st.header("Launch Evaluation Job")
 
     eval_job_id = st.text_input("Evaluation Job ID", "eval-demo-001")
-    eval_base_model = st.text_input("Evaluation Base Model", "unsloth/Qwen2.5-0.5B")
+    eval_base_model = st.text_input("Evaluation Base Model", "unsloth/Qwen2.5-0.5B-Instruct")
     adapter_repo = st.text_input("Adapter Repo", "your-hf-username/finetuneit-demo-adapter")
     eval_dataset = st.text_input("Evaluation Dataset Path", "data/sample_alpaca.jsonl")
-    prompt_template = st.selectbox("Evaluation Prompt Template", ["alpaca", "reasoning_alpaca", "instruction_only"])
-    eval_template_type = st.selectbox("Evaluation Template Type", ["instruction", "chat"])
+    _eval_style = detect_model_style(eval_base_model, API_BASE)
+    render_model_style_cue(_eval_style)
+    eval_template_type = _eval_style["template_type"]
+    if eval_template_type == "instruction":
+        prompt_template = st.selectbox("Evaluation Prompt Template", ["alpaca", "reasoning_alpaca", "instruction_only"])
+    else:
+        prompt_template = "alpaca"
+    with st.expander("Advanced: override template type"):
+        eval_template_type = st.radio(
+            "Template type", ["instruction", "chat"],
+            index=["instruction", "chat"].index(eval_template_type),
+            horizontal=True, key="eval_tt_override",
+        )
     num_samples = st.number_input("Number of Eval Samples", min_value=1, value=5)
 
     if st.button("Start Evaluation"):
@@ -504,7 +562,7 @@ with tab_infer:
 
     infer_base_model = st.text_input(
         "Inference Base Model",
-        st.session_state.get("infer_base_model", champion.get("base_model", inference_cfg.get("default_base_model", "unsloth/Qwen2.5-0.5B"))),
+        st.session_state.get("infer_base_model", champion.get("base_model", inference_cfg.get("default_base_model", "unsloth/Qwen2.5-0.5B-Instruct"))),
         key="infer_base_model",
     )
     infer_adapter_repo = st.text_input(
@@ -513,18 +571,30 @@ with tab_infer:
         key="infer_adapter_repo",
     )
 
+    _infer_style = detect_model_style(infer_base_model, API_BASE)
+    render_model_style_cue(_infer_style)
+    infer_template_type = _infer_style["template_type"]
+
     template_options = ["alpaca", "reasoning_alpaca", "instruction_only"]
     default_template = st.session_state.get("infer_prompt_template", champion.get("prompt_template", inference_cfg.get("default_prompt_template", "alpaca")))
     if default_template not in template_options:
         default_template = "alpaca"
 
-    infer_prompt_template = st.selectbox(
-        "Inference Prompt Template",
-        template_options,
-        index=template_options.index(default_template),
-        key="infer_prompt_template",
-    )
-    infer_template_type = st.selectbox("Template Type", ["instruction", "chat"], key="infer_template_type")
+    if infer_template_type == "instruction":
+        infer_prompt_template = st.selectbox(
+            "Inference Prompt Template",
+            template_options,
+            index=template_options.index(default_template),
+            key="infer_prompt_template",
+        )
+    else:
+        infer_prompt_template = "alpaca"
+    with st.expander("Advanced: override template type"):
+        infer_template_type = st.radio(
+            "Template type", ["instruction", "chat"],
+            index=["instruction", "chat"].index(infer_template_type),
+            horizontal=True, key="infer_tt_override",
+        )
     prompt = st.text_area("Prompt", "Explain credit risk in simple terms.")
     input_text = st.text_area("Optional Input Context", "")
     max_new_tokens = st.slider("Max New Tokens", 32, 1024, int(inference_cfg.get("default_max_new_tokens", 128)))

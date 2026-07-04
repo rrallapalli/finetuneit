@@ -10,6 +10,7 @@ from app.api.routes_evaluation import router as evaluation_router
 from app.api.routes_inference import router as inference_router
 from app.api.routes_wandb import router as wandb_router
 from app.api.routes_registry import router as registry_router
+from app.api.routes_model import router as model_router
 from app.core.platform_config import load_platform_config
 
 app = FastAPI(title="FineTuneIT Lite")
@@ -19,6 +20,7 @@ app.include_router(evaluation_router)
 app.include_router(inference_router)
 app.include_router(wandb_router)
 app.include_router(registry_router)
+app.include_router(model_router)
 
 @app.get("/")
 def health():
