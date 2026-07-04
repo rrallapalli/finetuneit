@@ -4,12 +4,24 @@ def build_prompt(example: dict, template_name: str, eos_token: str = "") -> str:
     output = example.get("output", "")
 
     if template_name in ["alpaca", "reasoning_alpaca"]:
-        text = f"""
+        if (input_text or "").strip():
+            text = f"""
 ### Instruction:
 {instruction}
 
 ### Input:
 {input_text}
+
+### Response:
+{output}"""
+        else:
+            # No input: omit the empty '### Input:' block. An empty input
+            # section makes base models emit EOS right after '### Response:'
+            # (empty output). This matches instruction_only when input is absent
+            # and is byte-identical to the old format when input is present.
+            text = f"""
+### Instruction:
+{instruction}
 
 ### Response:
 {output}"""
@@ -29,12 +41,21 @@ def build_prompt(example: dict, template_name: str, eos_token: str = "") -> str:
 
 def build_inference_prompt(prompt: str, input_text: str = "", template_name: str = "alpaca") -> str:
     if template_name in ["alpaca", "reasoning_alpaca"]:
-        return f"""
+        if (input_text or "").strip():
+            return f"""
 ### Instruction:
 {prompt}
 
 ### Input:
 {input_text}
+
+### Response:"""
+        # No input: omit the empty '### Input:' block so base models don't stop
+        # immediately at '### Response:'. Identical to the old format when input
+        # is present.
+        return f"""
+### Instruction:
+{prompt}
 
 ### Response:"""
 
