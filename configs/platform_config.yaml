@@ -26,3 +26,16 @@ inference:
   default_prompt_template: alpaca
   default_max_new_tokens: 128
   default_temperature: 0.7
+
+# Model dropdown for Train / Evaluate / Inference. Curate per deployment
+# (any HF id works; chat vs base is auto-detected). The "Other" option in
+# the UI always allows a custom id regardless of this list.
+models:
+  - unsloth/Qwen2.5-0.5B-Instruct
+  - unsloth/Qwen2.5-1.5B-Instruct
+  - unsloth/Qwen2.5-3B-Instruct
+  - unsloth/Qwen2.5-7B-Instruct
+  - unsloth/Qwen2.5-0.5B
+  - unsloth/Qwen2.5-1.5B
+  - unsloth/Qwen2.5-3B
+  - unsloth/Qwen2.5-7B

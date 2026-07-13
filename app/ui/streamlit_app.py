@@ -80,7 +80,10 @@ def detect_model_style(model_name, api_base):
                 "source": "name_heuristic", "has_chat_template": None}
 
 
-MODEL_OPTIONS = [
+# Model dropdown entries. Deployments curate their own list in
+# configs/platform_config.yaml under `models:` (no code change needed);
+# this hardcoded list is only the fallback when the config key is absent.
+_DEFAULT_MODEL_OPTIONS = [
     "unsloth/Qwen2.5-0.5B-Instruct",
     "unsloth/Qwen2.5-1.5B-Instruct",
     "unsloth/Qwen2.5-3B-Instruct",
@@ -90,6 +93,7 @@ MODEL_OPTIONS = [
     "unsloth/Qwen2.5-3B",
     "unsloth/Qwen2.5-7B",
 ]
+MODEL_OPTIONS = list(platform_config.get("models") or _DEFAULT_MODEL_OPTIONS)
 _OTHER_MODEL = "Other (enter model id)…"
 
 
@@ -496,22 +500,62 @@ with tab_registry:
         display_cols = [c for c in display_cols if c in df.columns]
         st.dataframe(df[display_cols], use_container_width=True)
 
-        st.subheader("Compare Selected Runs")
+        st.subheader("Compare Two Runs (e.g. base vs fine-tuned)")
+        st.caption(
+            "Pick two evaluated runs — typically the base model (no adapter) and your "
+            "fine-tuned adapter, scored on the SAME held-out dataset. Positive delta = Run B better."
+        )
         run_options = {
             f"{row.get('run_name') or row.get('run_id')} | score={row.get('model_score')}": row
             for row in runs
         }
+        cc1, cc2 = st.columns(2)
+        with cc1:
+            run_a_label = st.selectbox("Run A (baseline)", list(run_options.keys()), key="cmp_a")
+        with cc2:
+            run_b_label = st.selectbox("Run B (candidate)", list(run_options.keys()),
+                                       index=min(1, len(run_options) - 1), key="cmp_b")
 
-        selected_labels = st.multiselect(
-            "Select runs to compare",
-            list(run_options.keys()),
-            default=list(run_options.keys())[: min(3, len(run_options))]
-        )
-
-        if selected_labels:
-            compare_df = pd.DataFrame([run_options[label] for label in selected_labels])
-            metric_cols = [c for c in ["model_score", "eval/loss", "ROUGE-L", "BERTScore (F1)", "SQuAD F1", "Average Latency (sec)"] if c in compare_df.columns]
-            st.bar_chart(compare_df.set_index("run_name")[metric_cols])
+        if run_a_label and run_b_label:
+            run_a, run_b = run_options[run_a_label], run_options[run_b_label]
+            # (metric, higher_is_better)
+            compare_metrics = [
+                ("model_score", True), ("ROUGE-1", True), ("ROUGE-2", True),
+                ("ROUGE-L", True), ("BLEU", True), ("BERTScore (F1)", True),
+                ("METEOR Score", True), ("SQuAD F1", True), ("Exact Match", True),
+                ("eval/loss", False), ("Average Perplexity", False),
+                ("Average Latency (sec)", False),
+            ]
+            rows_out, b_wins, a_wins = [], 0, 0
+            for metric, higher_better in compare_metrics:
+                va, vb = run_a.get(metric), run_b.get(metric)
+                if va is None and vb is None:
+                    continue
+                delta = (vb - va) if (va is not None and vb is not None) else None
+                verdict = ""
+                if delta is not None and abs(delta) > 1e-12:
+                    b_better = (delta > 0) == higher_better
+                    verdict = "B better" if b_better else "A better"
+                    if b_better: b_wins += 1
+                    else: a_wins += 1
+                rows_out.append({
+                    "Metric": metric + ("" if higher_better else "  (lower is better)"),
+                    "Run A": va, "Run B": vb,
+                    "Delta (B - A)": round(delta, 6) if delta is not None else None,
+                    "Verdict": verdict,
+                })
+            st.dataframe(pd.DataFrame(rows_out), use_container_width=True, hide_index=True)
+            if b_wins or a_wins:
+                if b_wins > a_wins:
+                    st.success(f"Run B leads on {b_wins} of {b_wins + a_wins} comparable metrics.")
+                elif a_wins > b_wins:
+                    st.warning(f"Run A leads on {a_wins} of {b_wins + a_wins} comparable metrics.")
+                else:
+                    st.info("Tied on comparable metrics — read sample generations to break the tie.")
+            st.caption(
+                "Metrics only tell part of the story: also compare a few generations from both "
+                "models on the same prompts in the Inference Playground."
+            )
 
         st.subheader("Promote Champion for Inference")
         champion_label = st.selectbox("Choose champion run", list(run_options.keys()))
@@ -547,7 +591,19 @@ with tab_eval:
     eval_base_model = model_selector(
         "Evaluation Base Model", "unsloth/Qwen2.5-0.5B-Instruct", key="eval_base_model")
     adapter_repo = st.text_input("Adapter Repo", "your-hf-username/finetuneit-demo-adapter")
-    eval_dataset = st.text_input("Evaluation Dataset Path", "data/sample_alpaca.jsonl")
+    _holdout = (st.session_state.get("last_train_result") or {}).get("holdout_path")
+    eval_dataset = st.text_input(
+        "Evaluation Dataset Path",
+        _holdout or "data/sample_alpaca.jsonl",
+        help="Use a HELD-OUT set the model did not train on. Evaluating on the "
+             "training file inflates scores and invalidates base-vs-finetuned "
+             "comparisons. Training saves its held-out split to "
+             "outputs/<experiment>/holdout.jsonl and it is pre-filled here after a run.",
+    )
+    if _holdout:
+        st.caption(f"Pre-filled with the last training run's held-out split: `{_holdout}`")
+    else:
+        st.caption("Tip: after a training run, this pre-fills with that run's held-out split (outputs/<experiment>/holdout.jsonl).")
     _eval_style = detect_model_style(eval_base_model, API_BASE)
     render_model_style_cue(_eval_style)
     eval_template_type = resolve_template_type(_eval_style["template_type"], eval_base_model, "eval")

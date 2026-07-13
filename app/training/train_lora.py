@@ -101,6 +101,24 @@ def run_training_from_config(config: dict) -> dict:
         split_dataset = load_and_prepare_dataset(config, tokenizer)
         eval_dataset = split_dataset.get("test")
         eval_enabled = eval_dataset is not None and len(eval_dataset) > 0
+
+        # Persist the held-out split so the Evaluate workflow can score on data
+        # the model did NOT train on (evaluating on the training file inflates
+        # metrics and invalidates base-vs-finetuned comparisons). Best-effort:
+        # never fails the run.
+        holdout_path = None
+        if eval_enabled:
+            try:
+                import json as _json
+                os.makedirs(output_dir, exist_ok=True)
+                holdout_path = os.path.join(output_dir, "holdout.jsonl")
+                keep = [c for c in ("instruction", "input", "output", "messages", "conversations")
+                        if c in eval_dataset.column_names]
+                with open(holdout_path, "w", encoding="utf-8") as f:
+                    for row in eval_dataset:
+                        f.write(_json.dumps({k: row[k] for k in keep}, ensure_ascii=False) + "\n")
+            except Exception:
+                holdout_path = None
         eval_strategy = training_config.get("eval_strategy", "steps") if eval_enabled else "no"
 
         # Modern TRL: all SFT-specific fields (max_length, dataset_text_field,
@@ -173,6 +191,7 @@ def run_training_from_config(config: dict) -> dict:
             "prompt_template": config.get("prompt_template"),
             "output_dir": output_dir,
             "adapter_repo": adapter_repo,
+            "holdout_path": holdout_path,
             "exports": exports,
             "wandb_entity": wandb_entity,
             "wandb_project": wandb_project,
